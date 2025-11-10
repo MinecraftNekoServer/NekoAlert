@@ -1,18 +1,229 @@
 package neko.nekoAlert;
 
 import com.google.inject.Inject;
-import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
+import com.velocitypowered.api.command.CommandSource;
+import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.event.Subscribe;
+import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
+import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Plugin;
+import com.velocitypowered.api.proxy.ConsoleCommandSource;
+import com.velocitypowered.api.proxy.Player;
+import com.velocitypowered.api.proxy.ProxyServer;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.slf4j.Logger;
+import org.yaml.snakeyaml.Yaml;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @Plugin(id = "nekoalert", name = "NekoAlert", version = "1.0-SNAPSHOT", url = "https://cnmsb.xin/", authors = {"不穿胖次の小奶猫"})
 public class NekoAlert {
 
     @Inject
     private Logger logger;
+    
+    @Inject
+    private ProxyServer server;
+    
+    private Map<String, List<String>> messages;
+    private int currentIndex = 0;
+    private Path configPath;
+    private String currentLine = null;
+    private int globalInterval = 60; // 全局间隔时间
 
     @Subscribe
     public void onProxyInitialization(ProxyInitializeEvent event) {
+        loadConfig();
+        startAlertTask();
+        
+        // 注册命令
+        server.getCommandManager().register("nekoalert", new ReloadCommand(), "na");
+    }
+    
+    @Subscribe
+    public void onProxyShutdown(ProxyShutdownEvent event) {
+        // 插件关闭时的清理工作
+    }
+    
+    private void loadConfig() {
+        try {
+            // 获取插件配置目录
+            configPath = Path.of("").toAbsolutePath().resolve("plugins").resolve("NekoAlert");
+            Files.createDirectories(configPath);
+            
+            // 加载配置文件
+            Path configFile = configPath.resolve("config.yml");
+            if (!Files.exists(configFile)) {
+                // 如果配置文件不存在，从资源目录复制默认配置文件
+                try (InputStream defaultConfigStream = getClass().getClassLoader().getResourceAsStream("config.yml")) {
+                    if (defaultConfigStream != null) {
+                        Files.copy(defaultConfigStream, configFile);
+                    } else {
+                        // 如果jar中也没有配置文件，则创建一个默认的
+                        String defaultConfig = "time: 60
+
+" +
+                                "messages:
+" +
+                                "  line1:
+" +
+                                "    - content: '&a[公告] &f欢迎来到服务器！'
+" +
+                                "      interval: 60
+" +
+                                "    - content: '&b[提示] &f请遵守服务器规则。'
+" +
+                                "      interval: 60
+" +
+                                "  line2:
+" +
+                                "    - content: '&6[活动] &f即将举办建筑比赛，敬请期待！'
+" +
+                                "      interval: 120
+" +
+                                "    - content: '&c[警告] &f不要破坏他人建筑。'
+" +
+                                "      interval: 60
+";
+                        Files.write(configFile, defaultConfig.getBytes());
+                    }
+                }
+            }
+            
+            // 读取配置文件内容
+            Yaml yaml = new Yaml();
+            String configContent = Files.readString(configFile);
+            Map<String, Object> config = yaml.load(configContent);
+            
+            // 读取全局时间设置
+            Integer globalTime = (Integer) config.get("time");
+            globalInterval = globalTime != null ? globalTime : 60;
+            
+            // 转换配置数据结构
+            Map<String, List<Map<String, Object>>> rawMessages = (Map<String, List<Map<String, Object>>>) config.get("messages");
+            messages = new HashMap<>();
+            
+            if (rawMessages != null) {
+                for (Map.Entry<String, List<Map<String, Object>>> entry : rawMessages.entrySet()) {
+                    String lineKey = entry.getKey();
+                    List<Map<String, Object>> rawEntries = entry.getValue();
+                    List<MessageEntry> messageEntries = new ArrayList<>();
+                    
+                    for (Map<String, Object> rawEntry : rawEntries) {
+                        String content = (String) rawEntry.get("content");
+                        Integer interval = (Integer) rawEntry.get("interval");
+                        // 如果消息没有指定间隔时间，则使用全局间隔时间
+                        messageEntries.add(new MessageEntry(content, interval != null ? interval : globalInterval));
+                    }
+                    
+                    messages.put(lineKey, messageEntries);
+                }
+            }
+            
+            // 初始化当前行
+            if (currentLine == null && messages != null && !messages.isEmpty()) {
+                currentLine = messages.keySet().iterator().next();
+            }
+            
+            logger.info("配置文件加载成功，消息行数: {}, 全局时间间隔: {}秒", messages != null ? messages.size() : 0, globalInterval);
+        } catch (IOException e) {
+            logger.error("加载配置文件时出错", e);
+        }
+    }
+    
+    private void startAlertTask() {
+        // 启动一个初始任务，后续会根据消息间隔时间动态调整
+        scheduleNextTask();
+    }
+    
+    private void scheduleNextTask() {
+        // 检查当前行是否有效
+        if (messages == null || messages.isEmpty()) {
+            // 如果没有消息，1秒后重试
+            currentInterval = 1;
+        } else {
+            // 如果当前行为空或不存在，设置为第一行
+            if (currentLine == null || !messages.containsKey(currentLine)) {
+                currentLine = messages.keySet().iterator().next();
+                currentIndex = 0;
+            }
+            
+            List<MessageEntry> currentMessages = messages.get(currentLine);
+            if (currentMessages != null && !currentMessages.isEmpty()) {
+                MessageEntry currentMessage = currentMessages.get(currentIndex);
+                // 使用MiniMessage解析颜色代码
+                Component component = MiniMessage.miniMessage().deserialize(currentMessage.getContent());
+                // 发送消息给所有在线玩家
+                server.getAllPlayers().forEach(player -> player.sendMessage(component));
+                
+                // 更新间隔时间
+                currentInterval = currentMessage.getInterval();
+                
+                // 更新消息索引
+                currentIndex = (currentIndex + 1) % currentMessages.size();
+                
+                // 如果当前行的消息已经全部发送完毕，切换到下一行
+                if (currentIndex == 0) {
+                    switchToNextLine();
+                }
+            } else {
+                // 如果当前行没有消息，设置默认间隔时间
+                currentInterval = 60;
+            }
+        }
+        
+        // 使用当前间隔时间调度下一次任务
+        server.getScheduler()
+            .buildTask(this, this::scheduleNextTask)
+            .delay(currentInterval, TimeUnit.SECONDS)
+            .schedule();
+    }
+    
+    private void switchToNextLine() {
+        // 获取所有行的键
+        List<String> lineKeys = new ArrayList<>(messages.keySet());
+        
+        if (!lineKeys.isEmpty()) {
+            // 找到当前行的索引
+            int currentLineIndex = lineKeys.indexOf(currentLine);
+            // 计算下一行的索引（循环）
+            int nextIndex = (currentLineIndex + 1) % lineKeys.size();
+            // 设置为下一行
+            currentLine = lineKeys.get(nextIndex);
+        }
+        
+        currentIndex = 0; // 重置消息索引
+    }
+    
+    // 重载配置文件的命令
+    private class ReloadCommand implements SimpleCommand {
+        @Override
+        public void execute(Invocation invocation) {
+            CommandSource source = invocation.source();
+            String[] args = invocation.arguments();
+            
+            if (args.length == 1 && args[0].equalsIgnoreCase("reload")) {
+                loadConfig();
+                source.sendMessage(Component.text("配置文件重载成功！"));
+            } else {
+                source.sendMessage(Component.text("使用方法: /nekoalert reload"));
+            }
+        }
+
+        @Override
+        public boolean hasPermission(Invocation invocation) {
+            CommandSource source = invocation.source();
+            return source.hasPermission("nekoalert.reload") || source instanceof ConsoleCommandSource;
+        }
     }
 }
