@@ -76,41 +76,48 @@ public class NekoAlert {
             
             // 加载配置文件
             Path configFile = configPath.resolve("config.yml");
+            if (!Files.exists(configFile)) {
+                // 如果配置文件不存在，从资源目录复制默认配置文件
+                try (InputStream defaultConfigStream = getClass().getClassLoader().getResourceAsStream("config.yml")) {
+                    if (defaultConfigStream != null) {
+                        Files.copy(defaultConfigStream, configFile);
+                    } else {
+                        // 如果jar中也没有配置文件，则创建一个默认的
+                        String defaultConfig = "time: 60\n" +
+                                "messages:\n" +
+                                "  line1:\n" +
+                                "    - ''\n" +
+                                "  line2:\n" +
+                                "    - ''\n";
+                        Files.write(configFile, defaultConfig.getBytes());
+                    }
+                } catch (IOException e) {
+                    logger.error("创建默认配置文件时出错", e);
+                    // 如果创建失败，创建一个空的配置结构
+                    messages = new HashMap<>();
+                    List<String> emptyList = new ArrayList<>();
+                    messages.put("line1", emptyList);
+                    return;
+                }
+            }
             
             // 读取配置文件内容
-
             Yaml yaml = new Yaml();
-
             String configContent = Files.readString(configFile);
-
             Map<String, Object> config = yaml.load(configContent);
-
             
-
             // 读取全局时间设置
-
             Integer globalTime = (Integer) config.get("time");
-
             globalInterval = globalTime != null ? globalTime : 60;
-
             
-
             // 转换配置数据结构
-
             messages = (Map<String, List<String>>) config.get("messages");
-
             
-
             // 初始化当前行
-
             if (currentLine == null && messages != null && !messages.isEmpty()) {
-
                 currentLine = messages.keySet().iterator().next();
-
             }
-
             
-
             logger.info("配置文件加载成功，消息行数: {}, 全局时间间隔: {}秒", messages != null ? messages.size() : 0, globalInterval);
         } catch (IOException e) {
             logger.error("加载配置文件时出错", e);
