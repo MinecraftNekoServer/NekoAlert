@@ -15,15 +15,24 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.slf4j.Logger;
 import org.yaml.snakeyaml.Yaml;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.io.File;
+
+import java.io.IOException;
+
+import java.io.InputStream;
+
+import java.nio.file.Files;
+
+import java.nio.file.Path;
+
+import java.util.ArrayList;
+
+import java.util.HashMap;
+
+import java.util.List;
+
+import java.util.Map;
+
 import java.util.concurrent.TimeUnit;
 
 @Plugin(id = "nekoalert", name = "NekoAlert", version = "1.0-SNAPSHOT", url = "https://cnmsb.xin/", authors = {"不穿胖次の小奶猫"})
@@ -35,10 +44,14 @@ public class NekoAlert {
     @Inject
     private ProxyServer server;
     
-    private Map<String, List<String>> messages;
-    private int currentIndex = 0;
-    private Path configPath;
-    private String currentLine = null;
+    private Map<String, List<String>> messages;
+
+    private int currentIndex = 0;
+
+    private Path configPath;
+
+    private String currentLine = null;
+
     private int globalInterval = 60; // 全局间隔时间
 
     @Subscribe
@@ -63,78 +76,41 @@ public class NekoAlert {
             
             // 加载配置文件
             Path configFile = configPath.resolve("config.yml");
-            if (!Files.exists(configFile)) {
-                // 如果配置文件不存在，从资源目录复制默认配置文件
-                try (InputStream defaultConfigStream = getClass().getClassLoader().getResourceAsStream("config.yml")) {
-                    if (defaultConfigStream != null) {
-                        Files.copy(defaultConfigStream, configFile);
-                    } else {
-                        // 如果jar中也没有配置文件，则创建一个默认的
-                        String defaultConfig = "time: 60
-
-" +
-                                "messages:
-" +
-                                "  line1:
-" +
-                                "    - content: '&a[公告] &f欢迎来到服务器！'
-" +
-                                "      interval: 60
-" +
-                                "    - content: '&b[提示] &f请遵守服务器规则。'
-" +
-                                "      interval: 60
-" +
-                                "  line2:
-" +
-                                "    - content: '&6[活动] &f即将举办建筑比赛，敬请期待！'
-" +
-                                "      interval: 120
-" +
-                                "    - content: '&c[警告] &f不要破坏他人建筑。'
-" +
-                                "      interval: 60
-";
-                        Files.write(configFile, defaultConfig.getBytes());
-                    }
-                }
-            }
             
-            // 读取配置文件内容
-            Yaml yaml = new Yaml();
-            String configContent = Files.readString(configFile);
-            Map<String, Object> config = yaml.load(configContent);
-            
-            // 读取全局时间设置
-            Integer globalTime = (Integer) config.get("time");
-            globalInterval = globalTime != null ? globalTime : 60;
-            
-            // 转换配置数据结构
-            Map<String, List<Map<String, Object>>> rawMessages = (Map<String, List<Map<String, Object>>>) config.get("messages");
-            messages = new HashMap<>();
-            
-            if (rawMessages != null) {
-                for (Map.Entry<String, List<Map<String, Object>>> entry : rawMessages.entrySet()) {
-                    String lineKey = entry.getKey();
-                    List<Map<String, Object>> rawEntries = entry.getValue();
-                    List<MessageEntry> messageEntries = new ArrayList<>();
-                    
-                    for (Map<String, Object> rawEntry : rawEntries) {
-                        String content = (String) rawEntry.get("content");
-                        Integer interval = (Integer) rawEntry.get("interval");
-                        // 如果消息没有指定间隔时间，则使用全局间隔时间
-                        messageEntries.add(new MessageEntry(content, interval != null ? interval : globalInterval));
-                    }
-                    
-                    messages.put(lineKey, messageEntries);
-                }
-            }
-            
-            // 初始化当前行
-            if (currentLine == null && messages != null && !messages.isEmpty()) {
-                currentLine = messages.keySet().iterator().next();
-            }
-            
+            // 读取配置文件内容
+
+            Yaml yaml = new Yaml();
+
+            String configContent = Files.readString(configFile);
+
+            Map<String, Object> config = yaml.load(configContent);
+
+            
+
+            // 读取全局时间设置
+
+            Integer globalTime = (Integer) config.get("time");
+
+            globalInterval = globalTime != null ? globalTime : 60;
+
+            
+
+            // 转换配置数据结构
+
+            messages = (Map<String, List<String>>) config.get("messages");
+
+            
+
+            // 初始化当前行
+
+            if (currentLine == null && messages != null && !messages.isEmpty()) {
+
+                currentLine = messages.keySet().iterator().next();
+
+            }
+
+            
+
             logger.info("配置文件加载成功，消息行数: {}, 全局时间间隔: {}秒", messages != null ? messages.size() : 0, globalInterval);
         } catch (IOException e) {
             logger.error("加载配置文件时出错", e);
@@ -150,7 +126,7 @@ public class NekoAlert {
         // 检查当前行是否有效
         if (messages == null || messages.isEmpty()) {
             // 如果没有消息，1秒后重试
-            currentInterval = 1;
+            globalInterval = 1;
         } else {
             // 如果当前行为空或不存在，设置为第一行
             if (currentLine == null || !messages.containsKey(currentLine)) {
@@ -158,16 +134,13 @@ public class NekoAlert {
                 currentIndex = 0;
             }
             
-            List<MessageEntry> currentMessages = messages.get(currentLine);
+            List<String> currentMessages = messages.get(currentLine);
             if (currentMessages != null && !currentMessages.isEmpty()) {
-                MessageEntry currentMessage = currentMessages.get(currentIndex);
+                String currentMessage = currentMessages.get(currentIndex);
                 // 使用MiniMessage解析颜色代码
-                Component component = MiniMessage.miniMessage().deserialize(currentMessage.getContent());
+                Component component = MiniMessage.miniMessage().deserialize(currentMessage);
                 // 发送消息给所有在线玩家
                 server.getAllPlayers().forEach(player -> player.sendMessage(component));
-                
-                // 更新间隔时间
-                currentInterval = currentMessage.getInterval();
                 
                 // 更新消息索引
                 currentIndex = (currentIndex + 1) % currentMessages.size();
@@ -178,14 +151,14 @@ public class NekoAlert {
                 }
             } else {
                 // 如果当前行没有消息，设置默认间隔时间
-                currentInterval = 60;
+                globalInterval = 60;
             }
         }
         
-        // 使用当前间隔时间调度下一次任务
+        // 使用全局间隔时间调度下一次任务
         server.getScheduler()
             .buildTask(this, this::scheduleNextTask)
-            .delay(currentInterval, TimeUnit.SECONDS)
+            .delay(globalInterval, TimeUnit.SECONDS)
             .schedule();
     }
     
