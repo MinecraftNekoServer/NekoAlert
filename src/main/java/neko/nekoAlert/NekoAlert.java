@@ -46,7 +46,7 @@ public class NekoAlert {
     
     private Map<String, List<String>> messages;
 
-    private int currentIndex = 0;
+    private boolean lineSent = false; // 标记当前行是否已发送
 
     private Path configPath;
 
@@ -138,46 +138,52 @@ public class NekoAlert {
             // 如果当前行为空或不存在，设置为第一行
             if (currentLine == null || !messages.containsKey(currentLine)) {
                 currentLine = messages.keySet().iterator().next();
-                currentIndex = 0;
+                lineSent = false; // 重置行发送状态
             }
             
             List<String> currentMessages = messages.get(currentLine);
             if (currentMessages != null && !currentMessages.isEmpty()) {
-                String currentMessage = currentMessages.get(currentIndex);
-                // 使用MiniMessage解析颜色代码和样式
-                String formattedMessage = currentMessage;
-                formattedMessage = formattedMessage.replace("&0", "<black>")
-                    .replace("&1", "<dark_blue>")
-                    .replace("&2", "<dark_green>")
-                    .replace("&3", "<dark_aqua>")
-                    .replace("&4", "<dark_red>")
-                    .replace("&5", "<dark_purple>")
-                    .replace("&6", "<gold>")
-                    .replace("&7", "<gray>")
-                    .replace("&8", "<dark_gray>")
-                    .replace("&9", "<blue>")
-                    .replace("&a", "<green>")
-                    .replace("&b", "<aqua>")
-                    .replace("&c", "<red>")
-                    .replace("&d", "<light_purple>")
-                    .replace("&e", "<yellow>")
-                    .replace("&f", "<white>")
-                    .replace("&k", "<obfuscated>")
-                    .replace("&l", "<bold>")
-                    .replace("&m", "<strikethrough>")
-                    .replace("&n", "<underlined>")
-                    .replace("&o", "<italic>")
-                    .replace("&r", "<reset>");
-                Component component = MiniMessage.miniMessage().deserialize(formattedMessage);
-                // 发送消息给所有在线玩家
-                server.getAllPlayers().forEach(player -> player.sendMessage(component));
+                // 如果当前行还没有发送，则发送整行的所有消息
+                if (!lineSent) {
+                    // 发送当前行的所有消息
+                    for (String message : currentMessages) {
+                        // 使用MiniMessage解析颜色代码和样式
+                        String formattedMessage = message;
+                        formattedMessage = formattedMessage.replace("&0", "<black>")
+                            .replace("&1", "<dark_blue>")
+                            .replace("&2", "<dark_green>")
+                            .replace("&3", "<dark_aqua>")
+                            .replace("&4", "<dark_red>")
+                            .replace("&5", "<dark_purple>")
+                            .replace("&6", "<gold>")
+                            .replace("&7", "<gray>")
+                            .replace("&8", "<dark_gray>")
+                            .replace("&9", "<blue>")
+                            .replace("&a", "<green>")
+                            .replace("&b", "<aqua>")
+                            .replace("&c", "<red>")
+                            .replace("&d", "<light_purple>")
+                            .replace("&e", "<yellow>")
+                            .replace("&f", "<white>")
+                            .replace("&k", "<obfuscated>")
+                            .replace("&l", "<bold>")
+                            .replace("&m", "<strikethrough>")
+                            .replace("&n", "<underlined>")
+                            .replace("&o", "<italic>")
+                            .replace("&r", "<reset>");
+                        Component component = MiniMessage.miniMessage().deserialize(formattedMessage);
+                        // 发送消息给所有在线玩家
+                        server.getAllPlayers().forEach(player -> player.sendMessage(component));
+                    }
+                    
+                    // 标记当前行已发送
+                    lineSent = true;
+                }
                 
-                // 更新消息索引
-                currentIndex = (currentIndex + 1) % currentMessages.size();
-                
-                // 如果当前行的消息已经全部发送完毕，切换到下一行
-                if (currentIndex == 0) {
+                // 如果当前行已发送，切换到下一行
+                if (lineSent) {
                     switchToNextLine();
+                    lineSent = false; // 重置下一行的发送状态
                 }
             } else {
                 // 如果当前行没有消息，设置默认间隔时间
@@ -204,8 +210,6 @@ public class NekoAlert {
             // 设置为下一行
             currentLine = lineKeys.get(nextIndex);
         }
-        
-        currentIndex = 0; // 重置消息索引
     }
     
     // 重载配置文件的命令
