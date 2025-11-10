@@ -118,7 +118,7 @@ public class NekoAlert {
                 currentLine = messages.keySet().iterator().next();
             }
             
-            logger.info("配置文件加载成功，消息行数: {}, 全局时间间隔: {}秒", messages != null ? messages.size() : 0, globalInterval);
+            logger.info("配置文件加载成功，加载了 {} 条消息, 间隔时间 {}秒", messages != null ? messages.size() : 0, globalInterval);
         } catch (IOException e) {
             logger.error("加载配置文件时出错", e);
         }
@@ -148,29 +148,57 @@ public class NekoAlert {
                     // 发送当前行的所有消息
                     for (String message : currentMessages) {
                         // 使用MiniMessage解析颜色代码和样式
+
                         String formattedMessage = message;
+
                         formattedMessage = formattedMessage.replace("&0", "<black>")
+
                             .replace("&1", "<dark_blue>")
+
                             .replace("&2", "<dark_green>")
+
                             .replace("&3", "<dark_aqua>")
+
                             .replace("&4", "<dark_red>")
+
                             .replace("&5", "<dark_purple>")
+
                             .replace("&6", "<gold>")
+
                             .replace("&7", "<gray>")
+
                             .replace("&8", "<dark_gray>")
+
                             .replace("&9", "<blue>")
+
                             .replace("&a", "<green>")
+
                             .replace("&b", "<aqua>")
+
                             .replace("&c", "<red>")
+
                             .replace("&d", "<light_purple>")
+
                             .replace("&e", "<yellow>")
+
                             .replace("&f", "<white>")
+
                             .replace("&k", "<obfuscated>")
+
                             .replace("&l", "<bold>")
+
                             .replace("&m", "<strikethrough>")
+
                             .replace("&n", "<underlined>")
+
                             .replace("&o", "<italic>")
+
                             .replace("&r", "<reset>");
+
+                        
+
+                        // 使用MiniMessage解析格式化消息
+
                         Component component = MiniMessage.miniMessage().deserialize(formattedMessage);
                         // 发送消息给所有在线玩家
                         server.getAllPlayers().forEach(player -> player.sendMessage(component));
